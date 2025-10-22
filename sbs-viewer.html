@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Visualiseur Stéréoscopique Alterné (SBS)</title>
+    <style>
+        /* CSS pour le style */
+        #drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 80%;
+            margin: 20px auto;
+            padding: 50px;
+            text-align: center;
+            font-size: 1.2em;
+            cursor: pointer;
+            color: #aaa;
+        }
+
+        #drop-area.highlight {
+            border-color: purple;
+        }
+
+        #viewport {
+            width: 100vw;
+            /* La moitié de la largeur de la fenêtre pour afficher une seule vue */
+            height: auto;
+            /* Hauteur ajustée automatiquement */
+            overflow: hidden;
+            /* Important : cache la partie de l'image qui dépasse */
+            border: 1px solid black;
+            margin: 20px auto;
+            display: none;
+            /* Caché jusqu'à ce qu'une image soit chargée */
+            position: relative;
+        }
+
+        #sbs-image {
+            display: block;
+            width: 200vw;
+            /* L'image est deux fois plus large que le viewport */
+            height: auto;
+            /* Par défaut, l'image est positionnée pour afficher la vue gauche */
+            /*
+            margin-left: 0;
+            */
+            /*transition: margin-left 0s;*/
+            /* Pas de transition pour le changement d'image */
+            /* Variable CSS pour le décalage de la vue droite */
+            --parallax-px: 0px;
+            /* La position initiale est toujours 0 (vue gauche) */
+            transform: translateX(0);
+            transition: transform 0s;
+            /* Pas de transition */
+        }
+
+        .right-view {
+            /* Décale l'image vers la gauche de sa moitié pour afficher la vue droite */
+           /* margin-left: -100vw !important;
+           */ 
+           transform: translateX(calc(-100vw + var(--parallax-px))) !important;
+        }
+
+        #controls {
+            text-align: center;
+            display: none;
+            /* Caché jusqu'à ce qu'une image soit chargée */
+        }
+
+        /* Ajouter ou modifier pour que le viewport puisse afficher le survol */
+        #viewport.highlight {
+            border-color: red;
+            /* Un indicateur visuel */
+            box-shadow: 0 0 10px red;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Visualiseur Stéréoscopique Alterné</h1>
+
+    <div id="drop-area">
+        <input type="file" id="fileElem" accept="image/*" style="display: none;">
+        <p>Glissez-déposez une image SBS ici, ou <a href="#" id="fileSelect">cliquez pour sélectionner</a>.</p>
+        <p class="small-text">Formats acceptés : PNG, JPG, etc.</p>
+    </div>
+
+    <div id="viewport">
+        <img id="sbs-image" src="" alt="Image Stéréoscopique SBS">
+    </div>
+
+    <div id="controls">
+        <label for="interval-range">Durée par image (ms): <span id="interval-value">500</span></label>
+        <input type="range" id="interval-range" min="10" max="1000" value="500">
+
+        <hr>
+        <div id="parallax-controls">
+            <label for="parallax-offset">Décalage horizontal (pixels):
+                <input type="number" id="parallax-offset" value="0" min="-50" max="50" style="width: 50px;">
+            </label>
+            <input type="range" id="parallax-range" min="-50" max="50" value="0">
+            <p class="small-text">Ajuste le décalage de la vue droite par rapport à la vue gauche pour corriger
+                l'alignement (entre -50 et +50 pixels).</p>
+        </div>
+    </div>
+
+    <script>
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const dropArea = document.getElementById('drop-area');
+            const fileElem = document.getElementById('fileElem');
+            const fileSelect = document.getElementById('fileSelect');
+            const viewport = document.getElementById('viewport'); // <--- Cible des nouveaux événements
+            const sbsImage = document.getElementById('sbs-image');
+            const controls = document.getElementById('controls');
+            // ... (Autres constantes) ...
+            const intervalRange = document.getElementById('interval-range');
+            const intervalValueSpan = document.getElementById('interval-value');
+
+            let intervalDuration = parseInt(intervalRange.value);
+            let isLeftView = true;
+            let intervalId;
+
+            let currentDropTarget = dropArea;
+
+
+
+
+            // --- Fonctions d'Alternance ---
+
+            function toggleView() {
+                if (isLeftView) {
+                    sbsImage.classList.add('right-view');
+                } else {
+                    sbsImage.classList.remove('right-view');
+                }
+                isLeftView = !isLeftView;
+            }
+
+
+            function startAlternating() {
+                // Arrête le précédent intervalle
+                clearInterval(intervalId);
+
+                // Démarrer le nouvel intervalle
+                intervalId = setInterval(toggleView, intervalDuration);
+
+                // NOUVEAU : Met à jour la cible de glisser-déposer
+                setupViewportDropEvents();
+
+                // Affiche l'image et les contrôles
+                dropArea.style.display = 'none';
+                viewport.style.display = 'block';
+                controls.style.display = 'block';
+            }
+
+
+
+            function updateInterval() {
+                intervalDuration = parseInt(this.value);
+                intervalValueSpan.textContent = intervalDuration;
+                startAlternating(); // Redémarre l'alternance avec la nouvelle durée
+            }
+
+            // Événement pour le changement du slider
+            intervalRange.addEventListener('input', updateInterval);
+
+
+
+
+            // --- Fonctions de Chargement d'Image ---
+
+            /**
+             * Lit un fichier (glissé-déposé ou sélectionné) et le charge dans l'élément <img>.
+             */
+            function loadFile(file) {
+                // Vérifier si c'est bien une image
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+
+                    reader.onload = function (e) {
+                        // Changer la source de l'image
+                        sbsImage.src = e.target.result;
+                    };
+
+                    // Quand l'image est chargée dans le DOM, démarrer l'alternance
+                    sbsImage.onload = startAlternating;
+
+                    // Lire le fichier comme URL de données (Data URL)
+                    reader.readAsDataURL(file);
+                } else {
+                    alert('Veuillez déposer un fichier image (PNG, JPG, etc.).');
+                }
+            }
+
+            // --- Gestion de la Sélection de Fichier (Bouton) ---
+
+            // Lorsque l'utilisateur clique sur le lien, déclencher le clic du champ input
+            fileSelect.addEventListener('click', (e) => {
+                e.preventDefault();
+                fileElem.click();
+            });
+
+            // Lorsque l'utilisateur sélectionne un fichier
+            fileElem.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    loadFile(e.target.files[0]);
+                }
+            });
+
+            // --- Gestion du Glisser-Déposer (Drag and Drop) ---
+
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            // Gestion du survol (highlight)
+            function highlight(e) {
+                // S'assurer que seul la cible actuelle est mise en surbrillance
+                currentDropTarget.classList.add('highlight');
+            }
+
+            function unhighlight(e) {
+                currentDropTarget.classList.remove('highlight');
+            }
+
+            function handleDrop(e) {
+                unhighlight(e); // Retirer la surbrillance
+                const dt = e.dataTransfer;
+                const files = dt.files;
+
+                if (files.length > 0) {
+                    loadFile(files[0]);
+                }
+            }
+
+            // Fonction pour appliquer les écouteurs sur une cible (initiale ou viewport)
+            function setupDropEvents(target) {
+                // Supprimer les écouteurs de la cible précédente
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    currentDropTarget.removeEventListener(eventName, highlight, false);
+                });
+                ['dragleave', 'drop'].forEach(eventName => {
+                    currentDropTarget.removeEventListener(eventName, unhighlight, false);
+                });
+                currentDropTarget.removeEventListener('drop', handleDrop, false);
+
+                // Définir la nouvelle cible
+                currentDropTarget = target;
+
+                // Appliquer les nouveaux écouteurs
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    target.addEventListener(eventName, highlight, false);
+                });
+                ['dragleave', 'drop'].forEach(eventName => {
+                    target.addEventListener(eventName, unhighlight, false);
+                });
+                target.addEventListener('drop', handleDrop, false);
+            }
+
+            // Fonction pour passer les événements au viewport après le premier chargement
+            function setupViewportDropEvents() {
+                // Nous voulons que tout le viewport (qui contient l'image) soit la zone de drop
+                setupDropEvents(viewport);
+            }
+
+            // Initialisation : Appliquer les écouteurs à la dropArea initiale
+            setupDropEvents(dropArea);
+
+
+            // Ajout des préventions de défaut pour le document entier (empêcher l'ouverture du fichier dans le navigateur)
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+
+
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+    // ... (Vos constantes existantes) ...
+    const viewport = document.getElementById('viewport');
+    const sbsImage = document.getElementById('sbs-image');
+    // ... (Autres constantes) ...
+
+    // NOUVELLES CONSTANTES pour le réglage de parallaxe
+    const parallaxOffsetInput = document.getElementById('parallax-offset');
+    const parallaxRangeInput = document.getElementById('parallax-range');
+
+    // ... (Vos variables existantes : intervalDuration, isLeftView, intervalId, currentDropTarget) ...
+
+
+    // --- NOUVELLE FONCTION de Parallaxe ---
+
+    function updateParallax(value) {
+        // Mettre à jour les deux contrôles pour la synchronisation
+        parallaxOffsetInput.value = value;
+        parallaxRangeInput.value = value;
+
+        // Mettre à jour la variable CSS pour appliquer le décalage
+        sbsImage.style.setProperty('--parallax-px', `${value}px`);
+        
+        // Comme le style est directement mis à jour via CSS, il n'est pas nécessaire de relancer l'intervalle, 
+        // mais c'est une bonne pratique de s'assurer que l'état d'affichage est correct.
+        // Si l'alternance est en cours, la prochaine vue droite utilisera ce nouveau décalage.
+        // Si l'alternance est arrêtée, on ne fait rien.
+    }
+
+    // Événements pour les contrôles de parallaxe
+    parallaxOffsetInput.addEventListener('input', (e) => {
+        updateParallax(e.target.value);
+    });
+
+    parallaxRangeInput.addEventListener('input', (e) => {
+        updateParallax(e.target.value);
+    });
+
+    // ... (Le reste de votre script.js : toggleView, startAlternating, updateInterval, loadFile, etc.) ...
+});
+
+    </script>
+
+</body>
+
+</html>
