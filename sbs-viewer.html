@@ -57,15 +57,12 @@
 
         .right-view {
             /* Décale l'image vers la gauche de sa moitié pour afficher la vue droite */
-           /* margin-left: -100vw !important;
-           */ 
-           transform: translateX(calc(-100vw + var(--parallax-px))) !important;
+            transform: translateX(calc(-100vw + var(--parallax-px))) !important;
         }
 
         #controls {
             text-align: center;
             display: none;
-            /* Caché jusqu'à ce qu'une image soit chargée */
         }
 
         /* Ajouter ou modifier pour que le viewport puisse afficher le survol */
@@ -79,7 +76,7 @@
 
 <body>
 
-    <h1>Visualiseur Stéréoscopique Alterné</h1>
+    <h1>SBS Picture Visualizer</h1>
 
     <div id="drop-area">
         <input type="file" id="fileElem" accept="image/*" style="display: none;">
@@ -92,32 +89,31 @@
     </div>
 
     <div id="controls">
-        <label for="interval-range">Durée par image (ms): <span id="interval-value">500</span></label>
+        <label for="interval-range">Speed (ms): <span id="interval-value">500</span></label>
         <input type="range" id="interval-range" min="10" max="1000" value="500">
 
-        <hr>
         <div id="parallax-controls">
-            <label for="parallax-offset">Décalage horizontal (pixels):
+            <label for="parallax-offset">Parallax (pixels):
                 <input type="number" id="parallax-offset" value="0" min="-50" max="50" style="width: 50px;">
             </label>
             <input type="range" id="parallax-range" min="-50" max="50" value="0">
-            <p class="small-text">Ajuste le décalage de la vue droite par rapport à la vue gauche pour corriger
-                l'alignement (entre -50 et +50 pixels).</p>
+            <p class="small-text">Adjust horzontal relative  position of right view (range -50 to +50 pixels).</p>
         </div>
     </div>
+    <hr>
 
     <script>
 
 
         document.addEventListener('DOMContentLoaded', () => {
-
+            const parallaxOffsetInput = document.getElementById('parallax-offset');
+            const parallaxRangeInput = document.getElementById('parallax-range');
             const dropArea = document.getElementById('drop-area');
             const fileElem = document.getElementById('fileElem');
             const fileSelect = document.getElementById('fileSelect');
             const viewport = document.getElementById('viewport'); // <--- Cible des nouveaux événements
             const sbsImage = document.getElementById('sbs-image');
             const controls = document.getElementById('controls');
-            // ... (Autres constantes) ...
             const intervalRange = document.getElementById('interval-range');
             const intervalValueSpan = document.getElementById('interval-value');
 
@@ -280,50 +276,112 @@
             });
 
 
+            // --- NOUVELLE FONCTION de Parallaxe ---
 
+            function updateParallax(value) {
+                // Mettre à jour les deux contrôles pour la synchronisation
+                parallaxOffsetInput.value = value;
+                parallaxRangeInput.value = value;
+
+                // Mettre à jour la variable CSS pour appliquer le décalage
+                sbsImage.style.setProperty('--parallax-px', `${value}px`);
+
+                // Comme le style est directement mis à jour via CSS, il n'est pas nécessaire de relancer l'intervalle, 
+                // mais c'est une bonne pratique de s'assurer que l'état d'affichage est correct.
+                // Si l'alternance est en cours, la prochaine vue droite utilisera ce nouveau décalage.
+                // Si l'alternance est arrêtée, on ne fait rien.
+            }
+
+            // Événements pour les contrôles de parallaxe
+            parallaxOffsetInput.addEventListener('input', (e) => {
+                updateParallax(e.target.value);
+            });
+
+            parallaxRangeInput.addEventListener('input', (e) => {
+                updateParallax(e.target.value);
+            });
+
+
+            // --- Contrôles Clavier et Souris ---
+
+            const PARALLAX_STEP = 1; // Ajustement d'un pixel
+            const SPEED_STEP = 10;  // Ajustement de 50 ms pour la vitesse
+
+            /**
+             * Gère le défilement de la molette pour ajuster la parallaxe.
+             * @param {Event} e L'événement de la molette.
+             */
+            viewport.addEventListener('wheel', (e) => {
+                e.preventDefault(); // Empêche le défilement de la page
+
+                // Détermine la direction: deltaY > 0 pour molette vers le bas/arrière, < 0 pour molette vers le haut/avant
+                const direction = e.deltaY > 0 ? PARALLAX_STEP : -PARALLAX_STEP;
+
+                let currentValue = parseInt(parallaxOffsetInput.value);
+                let newValue = currentValue + direction;
+
+                // Assure que la valeur reste dans les limites du contrôle HTML (-50 à 50)
+                newValue = Math.max(-50, Math.min(50, newValue));
+
+                updateParallax(newValue);
+            }, false); // 'false' pour indiquer qu'on n'utilise pas la capture d'événement
+
+            /**
+             * Gère les pressions de touches pour ajuster la parallaxe et la vitesse.
+             * @param {Event} e L'événement du clavier.
+             */
+            document.addEventListener('keydown', (e) => {
+                // S'assurer qu'on n'est pas en train d'écrire dans un champ de texte
+                if (e.target.tagName.toLowerCase() === 'input') {
+                    return;
+                }
+
+                let parallaxValue = parseInt(parallaxOffsetInput.value);
+                let speedValue = parseInt(intervalRange.value);
+
+                let handled = true;
+
+                console.info(e.key);
+
+                switch (e.key) {
+                    // --- Contrôles de Parallaxe ---
+                    case 'ArrowLeft':
+                        // Décaler la parallaxe vers la gauche (valeur plus négative)
+                        parallaxValue = Math.max(-50, parallaxValue - PARALLAX_STEP);
+                        updateParallax(parallaxValue);
+                        break;
+                    case 'ArrowRight':
+                        // Décaler la parallaxe vers la droite (valeur plus positive)
+                        parallaxValue = Math.min(50, parallaxValue + PARALLAX_STEP);
+                        updateParallax(parallaxValue);
+                        break;
+
+                    // --- Contrôles de Vitesse ---
+                    case 'ArrowUp':
+                        // Diminuer l'intervalle (augmenter la vitesse)
+                        speedValue = Math.max(10, speedValue - SPEED_STEP);
+                        // Simule l'input du range pour mettre à jour la vitesse
+                        intervalRange.value = speedValue;
+                        intervalRange.dispatchEvent(new Event('input'));
+                        break;
+                    case 'ArrowDown':
+                        // Augmenter l'intervalle (diminuer la vitesse)
+                        speedValue = Math.min(1000, speedValue + SPEED_STEP);
+                        // Simule l'input du range pour mettre à jour la vitesse
+                        intervalRange.value = speedValue;
+                        intervalRange.dispatchEvent(new Event('input'));
+                        break;
+
+                    default:
+                        handled = false;
+                        break;
+                }
+
+                if (handled) {
+                    e.preventDefault(); // Empêche le défilement de la page par défaut
+                }
+            });
         });
-
-        document.addEventListener('DOMContentLoaded', () => {
-    // ... (Vos constantes existantes) ...
-    const viewport = document.getElementById('viewport');
-    const sbsImage = document.getElementById('sbs-image');
-    // ... (Autres constantes) ...
-
-    // NOUVELLES CONSTANTES pour le réglage de parallaxe
-    const parallaxOffsetInput = document.getElementById('parallax-offset');
-    const parallaxRangeInput = document.getElementById('parallax-range');
-
-    // ... (Vos variables existantes : intervalDuration, isLeftView, intervalId, currentDropTarget) ...
-
-
-    // --- NOUVELLE FONCTION de Parallaxe ---
-
-    function updateParallax(value) {
-        // Mettre à jour les deux contrôles pour la synchronisation
-        parallaxOffsetInput.value = value;
-        parallaxRangeInput.value = value;
-
-        // Mettre à jour la variable CSS pour appliquer le décalage
-        sbsImage.style.setProperty('--parallax-px', `${value}px`);
-        
-        // Comme le style est directement mis à jour via CSS, il n'est pas nécessaire de relancer l'intervalle, 
-        // mais c'est une bonne pratique de s'assurer que l'état d'affichage est correct.
-        // Si l'alternance est en cours, la prochaine vue droite utilisera ce nouveau décalage.
-        // Si l'alternance est arrêtée, on ne fait rien.
-    }
-
-    // Événements pour les contrôles de parallaxe
-    parallaxOffsetInput.addEventListener('input', (e) => {
-        updateParallax(e.target.value);
-    });
-
-    parallaxRangeInput.addEventListener('input', (e) => {
-        updateParallax(e.target.value);
-    });
-
-    // ... (Le reste de votre script.js : toggleView, startAlternating, updateInterval, loadFile, etc.) ...
-});
-
     </script>
 
 </body>
